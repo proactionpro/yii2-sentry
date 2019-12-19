@@ -71,22 +71,6 @@ class SentryTarget extends Target
                 'tags' => ['category' => $category]
             ];
             
-            if (isset($text['tags'])) {
-                $data['tags'] = ArrayHelper::merge($data['tags'], $text['tags']);
-                configureScope(function (Scope $scope) use ($data): void {
-                    foreach ($data['tags'] as $key => $value) {
-                        $scope->setTag($key, $value);
-                    }
-                });
-                unset($text['tags']);
-            }
-            
-            if (!Yii::$app->request->isConsoleRequest && !Yii::$app->user->isGuest) {
-                configureScope(function (Scope $scope) use ($data): void {
-                    $scope->setUser(['id' => Yii::$app->user->id, 'ip_address' => Yii::$app->request->userIP]);
-                });
-            }
-            
             if ($this->context) {
                 $data['extra']['context'] = parent::getContextMessage();
             }
@@ -98,6 +82,8 @@ class SentryTarget extends Target
                 }
                 
                 $data['extra'] = $text;
+                $data['tags'] = ArrayHelper::merge($data['tags'], $text['tags']);
+                unset($text['tags']);
                 
             } else {
                 $data['message'] = $text;
@@ -110,6 +96,21 @@ class SentryTarget extends Target
                     foreach ($data['extra'] as $key => $value) {
                         $scope->setExtra((string)$key, $value);
                     }
+                });
+            }
+            
+            if (isset($data['tags'])) {
+                configureScope(function (Scope $scope) use ($data): void {
+                    foreach ($data['tags'] as $key => $value) {
+                        $scope->setTag($key, $value);
+                    }
+                });
+            }
+    
+    
+            if (!Yii::$app->request->isConsoleRequest && !Yii::$app->user->isGuest) {
+                configureScope(function (Scope $scope) use ($data): void {
+                    $scope->setUser(['id' => Yii::$app->user->id, 'ip_address' => Yii::$app->request->userIP]);
                 });
             }
             
