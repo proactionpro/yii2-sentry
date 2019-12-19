@@ -6,9 +6,14 @@
 
 namespace notamedia\sentry;
 
+use Sentry\State\Scope;
+use Yii;
 use yii\helpers\ArrayHelper;
 use yii\log\Logger;
 use yii\log\Target;
+use function Sentry\captureException;
+use function Sentry\captureMessage;
+use function Sentry\configureScope;
 
 /**
  * SentryTarget records log messages in a Sentry.
@@ -33,21 +38,17 @@ class SentryTarget extends Target
      * @var callable Callback function that can modify extra's array
      */
     public $extraCallback;
-    /**
-     * @var \Sentry
-     */
-    protected $client;
-
+    
     /**
      * @inheritdoc
      */
     public function collect($messages, $final)
     {
         \Sentry\init(array_merge(['dsn' => $this->dsn], $this->clientOptions));
-
+        
         parent::collect($messages, $final);
     }
-
+    
     /**
      * @inheritdoc
      */
@@ -55,64 +56,71 @@ class SentryTarget extends Target
     {
         return '';
     }
-
+    
     /**
      * @inheritdoc
      */
     public function export()
     {
         foreach ($this->messages as $message) {
-            list($text, $level, $category, $timestamp, $traces) = $message;
-
+            [$text, $level, $category, $timestamp, $traces] = $message;
+            
             $data = [
                 'level' => static::getLevelName($level),
                 'timestamp' => $timestamp,
                 'tags' => ['category' => $category]
             ];
-
-            if ($text instanceof \Throwable || $text instanceof \Exception) {
-                $data = $this->runExtraCallback($text, $data);
-                \Sentry\captureException($text, $data);
-                continue;
-            } elseif (is_array($text)) {
+            
+            if (isset($text['tags'])) {
+                $data['tags'] = ArrayHelper::merge($data['tags'], $text['tags']);
+                configureScope(function (Scope $scope) use ($data): void {
+                    foreach ($data['tags'] as $key => $value) {
+                        $scope->setTag($key, $value);
+                    }
+                });
+                unset($text['tags']);
+            }
+            
+            if (!Yii::$app->request->isConsoleRequest && !Yii::$app->user->isGuest) {
+                configureScope(function (Scope $scope) use ($data): void {
+                    $scope->setUser(['id' => Yii::$app->user->id, 'ip_address' => Yii::$app->request->userIP]);
+                });
+            }
+            
+            if ($this->context) {
+                $data['extra']['context'] = parent::getContextMessage();
+            }
+            
+            if (is_array($text)) {
                 if (isset($text['msg'])) {
                     $data['message'] = $text['msg'];
                     unset($text['msg']);
                 }
-
-                if (isset($text['tags'])) {
-                    $data['tags'] = ArrayHelper::merge($data['tags'], $text['tags']);
-                    \Sentry\configureScope(function (\Sentry\State\Scope $scope) use ($data): void {
-                        foreach ($data['tags'] as $key => $value) {
-                            $scope->setTag($key, $value);
-                        }
-                    });
-                    unset($text['tags']);
-                }
-
-                $data['extra'] = $text;
                 
-                if (!empty($data['extra'])) {
-                    \Sentry\configureScope(function (\Sentry\State\Scope $scope) use ($data): void {
-                        foreach ($data['extra'] as $key => $value) {
-                            $scope->setExtra((string)$key, $value);
-                        }
-                    });
-                }
+                $data['extra'] = $text;
                 
             } else {
                 $data['message'] = $text;
             }
-
-            if ($this->context) {
-                $data['extra']['context'] = parent::getContextMessage();
-            }
-
+            
             $data = $this->runExtraCallback($text, $data);
-            \Sentry\captureMessage($data['message']);
+            
+            if (!empty($data['extra'])) {
+                configureScope(function (Scope $scope) use ($data): void {
+                    foreach ($data['extra'] as $key => $value) {
+                        $scope->setExtra((string)$key, $value);
+                    }
+                });
+            }
+            
+            if ($text instanceof \Throwable || $text instanceof \Exception) {
+                captureException($text);
+            } else {
+                captureMessage($data['message'], $data['level']);
+            }
         }
     }
-
+    
     /**
      * Calls the extra callback if it exists
      *
@@ -125,10 +133,10 @@ class SentryTarget extends Target
         if (is_callable($this->extraCallback)) {
             $data['extra'] = call_user_func($this->extraCallback, $text, isset($data['extra']) ? $data['extra'] : []);
         }
-
+        
         return $data;
     }
-
+    
     /**
      * Returns the text display of the specified level for the Sentry.
      *
@@ -145,7 +153,7 @@ class SentryTarget extends Target
             Logger::LEVEL_PROFILE_BEGIN => 'debug',
             Logger::LEVEL_PROFILE_END => 'debug',
         ];
-
+        
         return isset($levels[$level]) ? $levels[$level] : 'error';
     }
 }
