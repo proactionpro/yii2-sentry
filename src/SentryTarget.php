@@ -40,6 +40,11 @@ class SentryTarget extends Target
     public $extraCallback;
     
     /**
+     * @var callable Callback function that can modify user info
+     */
+    public $userCallback;
+    
+    /**
      * @inheritdoc
      */
     public function collect($messages, $final)
@@ -109,8 +114,10 @@ class SentryTarget extends Target
     
     
             if (!Yii::$app->request->isConsoleRequest && !Yii::$app->user->isGuest) {
-                configureScope(function (Scope $scope) use ($data): void {
-                    $scope->setUser(['id' => Yii::$app->user->id, 'ip_address' => Yii::$app->request->userIP]);
+                configureScope(function (Scope $scope) use ($text): void {
+                    $userContext = ['id' => Yii::$app->user->id, 'ip_address' => Yii::$app->request->userIP];
+                    $userContext = $this->runUserCallback($text, $userContext);
+                    $scope->setUser($userContext);
                 });
             }
             
@@ -136,6 +143,22 @@ class SentryTarget extends Target
         }
         
         return $data;
+    }
+    
+    /**
+     * Calls the user callback if it exists
+     *
+     * @param $text
+     * @param $userContext
+     * @return array
+     */
+    public function runUserCallback($text, $userContext)
+    {
+        if (is_callable($this->userCallback)) {
+            $userContext = call_user_func($this->userCallback, $text, isset($userContext) ? $userContext : []);
+        }
+        
+        return $userContext;
     }
     
     /**
