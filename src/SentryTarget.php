@@ -113,12 +113,19 @@ class SentryTarget extends Target
             }
     
     
-            if (!Yii::$app->request->isConsoleRequest && !Yii::$app->user->isGuest) {
-                configureScope(function (Scope $scope) use ($text): void {
-                    $userContext = ['id' => Yii::$app->user->id, 'ip_address' => Yii::$app->request->userIP];
-                    $userContext = $this->runUserCallback($text, $userContext);
-                    $scope->setUser($userContext);
-                });
+            if (!Yii::$app->request->isConsoleRequest) {
+                if (Yii::$app->user->isGuest) {
+                    configureScope(function (Scope $scope): void {
+                        $userContext = ['ip_address' => Yii::$app->request->userIP];
+                        $scope->setUser($userContext);
+                    });
+                } else {
+                    configureScope(function (Scope $scope) use ($text): void {
+                        $userContext = ['id' => Yii::$app->user->id, 'ip_address' => Yii::$app->request->userIP];
+                        $userContext = $this->runUserCallback($text, $userContext);
+                        $scope->setUser($userContext);
+                    });
+                }
             }
             
             if ($text instanceof \Throwable || $text instanceof \Exception) {
