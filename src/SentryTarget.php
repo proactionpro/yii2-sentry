@@ -6,6 +6,7 @@
 
 namespace notamedia\sentry;
 
+use Sentry\Severity;
 use Sentry\State\Scope;
 use Yii;
 use yii\helpers\ArrayHelper;
@@ -73,7 +74,7 @@ class SentryTarget extends Target
             $data = [
                 'level' => static::getLevelName($level),
                 'timestamp' => $timestamp,
-                'tags' => ['category' => $category]
+                'tags' => ['category' => $category],
             ];
             
             if ($this->context) {
@@ -185,6 +186,6 @@ class SentryTarget extends Target
             Logger::LEVEL_PROFILE_END => 'debug',
         ];
         
-        return isset($levels[$level]) ? $levels[$level] : 'error';
+        return new Severity($levels[$level] ?? 'error');
     }
 }
