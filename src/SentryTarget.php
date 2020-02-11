@@ -115,7 +115,7 @@ class SentryTarget extends Target
     
     
             if (!Yii::$app->request->isConsoleRequest) {
-                if (Yii::$app->user->isGuest) {
+                if (!headers_sent() && Yii::$app->user->isGuest) {
                     configureScope(function (Scope $scope): void {
                         $userContext = ['ip_address' => Yii::$app->request->userIP];
                         $scope->setUser($userContext);
